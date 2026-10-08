@@ -1,4 +1,7 @@
 """Test utilities."""
+import os
+import subprocess
+import sys
 import unittest
 import bs4
 import textwrap
@@ -102,6 +105,42 @@ class TestCase(unittest.TestCase):
         print('----Running Assert Test----')
         with self.assertRaises(exception):
             self.compile_pattern(pattern, namespaces=namespace, custom=custom)
+
+    def assert_syntax_error_no_timeout(self, pattern, timeout=60):
+        """
+        Assert that compiling the pattern fails with a syntax error and does not hang.
+
+        The pattern is compiled in a separate Python process so that a pattern which
+        triggers catastrophic backtracking can be terminated on every platform.
+        """
+
+        print('----Running Assert No Timeout Test----')
+        root = os.path.dirname(os.path.dirname(os.path.abspath(sv.__file__)))
+        code = textwrap.dedent(
+            """
+            import sys
+            sys.path.insert(0, {root!a})
+            import soupsieve as sv
+            try:
+                sv.compile({pattern!a})
+            except sv.SelectorSyntaxError:
+                sys.exit(0)
+            print('No SelectorSyntaxError was raised')
+            sys.exit(1)
+            """
+        ).format(root=root, pattern=pattern)
+        try:
+            result = subprocess.run(
+                [sys.executable, '-'],
+                input=code,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            self.fail('Compiling the pattern did not finish within {} seconds'.format(timeout))
+        self.assertEqual(result.returncode, 0, result.stdout)
 
     def assert_selector(self, markup, selectors, expected_ids, namespaces={}, custom=None, flags=0):
         """Assert selector."""
